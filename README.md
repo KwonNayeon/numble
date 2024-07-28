@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Small and Medium-sized Enterprises Closure Prediction Project
 
 ## Project Summary
@@ -33,3 +34,6 @@ Due to a contract with the competition organization, the dataset used in this pr
 - **Younghoon Yoo** - Automated data preprocessing, building ML models, code optimization
 
 Feel free to explore the repository and download the PDFs for detailed information about the Small and Medium-sized Enterprises Closure Prediction Project.
+=======
+# urban-parks-childrens-happiness
+>>>>>>> 1fbd89d (Initial commit)
