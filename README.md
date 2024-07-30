@@ -8,16 +8,17 @@
 
 ## Files Description
 
-- **About the project in Korean.pdf**: A portfolio of the project, written in Korean, providing an overview, background, details of the data used, implemented ML models, model performance, and key findings. Please note that this version includes more detailed information, such as preprocessing details and MeandecreaseGini plots for each model.
+- **About the project in Korean.pdf**: A portfolio of the project, written in Korean, providing an overview, background, details of the data used, implemented ML models, model performance, and key findings. Please note that this version includes more detailed information, such as preprocessing details.
 
 - **About the project.pdf**: A summary of the project in English.
 
 - **Summary Statistics.pdf**: Summary statistics of the variables used in the analysis.
 
+- **Numble Project.Rmd**: This is the code for the project from scratch. It contains all the steps from data preprocessing to model evaluation.
+
+- **Numble Reflections.pdf**: This is the reflection written in Korean. It includes insights and learnings from the project.
+
+## Important Note
+Please note that I cannot upload the dataset for this project due to a contract with the organization of the competition. Therefore, the code provided will not include the dataset itself but should give a comprehensive understanding of the methodology and analysis.
+
 Please feel free to explore the repository and download the PDF files that interest you. They contain comprehensive information about my Small and Medium-sized Enterprises Closure Prediction Project.
-
-## Contact
-
-If you have any questions or would like further information, please don't hesitate to reach out to me:
-
-- LinkedIn: [NayeonKwon](https://www.linkedin.com/in/nayeon-kwon-443573192/)
