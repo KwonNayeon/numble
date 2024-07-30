@@ -16,6 +16,8 @@
 
 - **Numble Project.Rmd**: This is the code for the project from scratch. It contains all the steps from data preprocessing to model evaluation.
 
+- **Numble Project.R**: This script contains the complete R code used for the project, including data preprocessing, model training, and evaluation steps.
+
 - **Numble Reflections.pdf**: This is the reflection written in Korean. It includes insights and learnings from the project.
 
 ## Important Note
