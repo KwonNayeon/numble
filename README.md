@@ -15,8 +15,8 @@ This project focuses on predicting the closure of small and medium-sized enterpr
 
 - **`About the project in Korean.pdf`**: Comprehensive project documentation in Korean, covering the project overview, data details, ML models used, performance results, and key findings. Includes detailed preprocessing information.
 - **`About the project.pdf`**: Summary of the project in English.
-- **`Summary Statistics.pdf`**: Contains summary statistics for the variables used in the analysis.
-- **`Numble Reflections.pdf`**: Reflections on the project, written in Korean, detailing insights and lessons learned.
+- **`Summary statistics.pdf`**: Contains summary statistics for the variables used in the analysis.
+- **`Numble reflections.pdf`**: Reflections on the project, written in Korean, detailing insights and lessons learned.
 
 ### `code/`
 
