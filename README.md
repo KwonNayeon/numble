@@ -1,24 +1,30 @@
 # Small and Medium-sized Enterprises Closure Prediction Project
 
 ## Project Summary
-- Utilized Business Trends and Outlook Survey Data to predict closures of small and medium-sized enterprises (SMEs).
-- Implemented machine learning (ML) models using the R language, leveraging packages such as `randomForest`, `catboost`, and `BART`.
-- Evaluated model performance using metrics such as AUROC, F1 score, and accuracy.
-- The project findings emphasize the significance of incorporating non-financial data for accurate predictions of small business closures.
+
+This project focuses on predicting the closure of small and medium-sized enterprises (SMEs) using Business Trends and Outlook Survey Data. Key aspects include:
+
+- **Data Utilization:** Leveraged survey data to analyze and predict SME closures.
+- **Machine Learning Models:** Implemented models using R, with packages such as `randomForest`, `catboost`, and `BART`.
+- **Performance Evaluation:** Assessed models with metrics like AUROC, F1 score, and accuracy.
+- **Key Findings:** Highlighted the importance of including non-financial data for accurate closure predictions.
 
 ## Files Description
 
 ### `docs/`
-- `About the project in Korean.pdf`: A portfolio of the project, written in Korean, providing an overview, background, details of the data used, implemented ML models, model performance, and key findings. This version includes more detailed information, such as preprocessing details.
-- `About the project.pdf`: A summary of the project in English.
-- `Summary Statistics.pdf`: Summary statistics of the variables used in the analysis.
-- `Numble Reflections.pdf`: Reflections written in Korean, including insights and learnings from the project.
+
+- **`About the project in Korean.pdf`**: Comprehensive project documentation in Korean, covering the project overview, data details, ML models used, performance results, and key findings. Includes detailed preprocessing information.
+- **`About the project.pdf`**: Summary of the project in English.
+- **`Summary Statistics.pdf`**: Contains summary statistics for the variables used in the analysis.
+- **`Numble Reflections.pdf`**: Reflections on the project, written in Korean, detailing insights and lessons learned.
 
 ### `code/`
-- `Numble Project.Rmd`: Contains the code for the project from scratch. It includes all steps from data preprocessing to model evaluation.
-- `Numble Project.R`: This script contains the complete R code used for the project, including data preprocessing, model training, and evaluation steps.
+
+- **`Numble Project.Rmd`**: R Markdown file with complete project code, from data preprocessing to model evaluation.
+- **`Numble Project.R`**: R script with all code for data preprocessing, model training, and evaluation.
 
 ## Important Note
-Please note that I cannot upload the dataset for this project due to a contract with the organization of the competition. Therefore, the code provided will not include the dataset itself but should give a comprehensive understanding of the methodology and analysis.
 
-Please feel free to explore the repository and download the PDF files that interest you. They contain comprehensive information about the Small and Medium-sized Enterprises Closure Prediction Project.
+Due to a contract with the competition organization, the dataset used in this project cannot be uploaded. While the provided code will not include the dataset, it offers a comprehensive understanding of the project’s methodology and analysis.
+
+Feel free to explore the repository and download the PDFs for detailed information about the Small and Medium-sized Enterprises Closure Prediction Project.
