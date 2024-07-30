@@ -1,0 +1,1071 @@
+# ---
+#   title: "Numble Project"
+# subtitle: "A Collaborative Analysis"
+# author: 
+#   - name: "Nayeon Kwon"
+# affiliation: "Department of Statistics, Sungkyunkwan University"
+# - name: "Younghoon Yoo"
+# affiliation: "Department of Statistics, Sungkyunkwan University"
+# date: "`r Sys.Date()`"
+# output:
+#   pdf_document:
+#   latex_engine: xelatex
+# extra_dependencies: ["fontspec"]
+# note: |
+#   The comments in this document are originally written in Korean. 
+# If you encounter any issues with character encoding, ensure that your text editor 
+# or IDE is set to UTF-8 encoding to correctly display the comments.
+# ---
+  
+  
+# pre-processing
+
+# Install necessary packages
+install.packages(c("Hmisc", "caTools", "lubridate", "RColorBrewer", "wordcloud", "plotly", "MLmetrics", "randomForest", "BART", "ggcharts"))
+# Uncomment the following lines if 'devtools' is not already installed
+# install.packages("devtools")
+
+# Load libraries
+library(tidyverse)   # For dplyr, ggplot, and friends
+library(readxl)      # For loading xlsx files
+library(haven)       # For handling various data formats
+library(caret)       # For confusion matrix
+library(skimr)       # For data summarization
+library(Hmisc)       # Miscellaneous useful functions
+library(caTools)     # For splitting data
+library(lubridate)   # For date functions
+library(dplyr)       # For data manipulation
+
+# Data visualization
+library(RColorBrewer)  # Color palettes
+library(wordcloud)     # Word cloud generator
+library(plotly)        # Interactive plots
+
+# Modeling
+library(MLmetrics)     # Metrics for machine learning models
+library(randomForest)  # Random Forest algorithm
+library(catboost)      # CatBoost algorithm
+library(BART)          # Bayesian Additive Regression Trees
+library(ggcharts)      # Easy charts with ggplot2
+
+# Uncomment and run the following lines to install CatBoost from source if needed
+# devtools::install_url('https://github.com/catboost/catboost/releases/download/v1.1.1/catboost-R-Windows-1.1.1.tgz', INSTALL_opts = c("--no-multiarch", "--no-test-load"))
+# devtools::install_url('https://github.com/catboost/catboost/releases/download/v1.1.1/catboost-R-Darwin-1.1.1.tgz', INSTALL_opts = c("--no-multiarch", "--no-test-load"))
+# devtools::install_url('https://github.com/catboost/catboost/releases/download/v1.1.1/catboost-R-Linux-1.1.1.tgz', INSTALL_opts = c("--no-multiarch", "--no-test-load"))
+
+
+# Active & Inactive Business Data
+
+active_1 <- read_excel("data/active.xlsx", sheet = 1) # 기업개요_외감
+active_2 <- read_excel("data/active.xlsx", sheet = 3) # 휴폐업 이력
+closed_1 <- read_excel("data/closed.xlsx", sheet = 1) # 기업개요
+closed_2 <- read_excel("data/closed.xlsx", sheet = 2) # 휴폐업 이력
+
+active_merged <- left_join(x=active_1, y=active_2, by='BIZ_NO')
+closed_merged <- left_join(x=closed_1, y=closed_2, by='BIZ_NO')
+
+# 컬럼이름 통일
+names(active_merged) <- names(closed_merged)
+
+closed_merged$CLSBZ_GB = 1
+active_merged$CLSBZ_GB = 0
+
+# 액티브와 휴폐업 병합
+data <- rbind(active_merged, closed_merged)
+
+# 불필요한 변수들 제거
+# 이름과 관련된 변수는 분석에서 제외
+# CMP_SCL : 모든 관측치가 2의 값을 가짐
+# PSN_CORP_GB : 모두 법인
+# HDOF_CMP_CD : 본점 기업코드
+data1 <- data %>%
+  select(
+    -c('CMP_PFIX_NM', 'CMP_NM', 'CMP_SFIX_NM', 'CMP_ENM',
+       'NATN_NM', 'HOMEPAGE_URL', 'CEO_NM',
+       'CMP_SCL', 'PSN_CORP_GB', 'HDOF_CMP_CD')
+  ) %>%
+  filter(!is.na(IND_CD1)
+  ) %>%
+  mutate(
+    IND_CD = case_when(
+      str_detect(IND_CD1, '10') ~ '10',
+      str_detect(IND_CD1, '11') ~ '11',
+      str_detect(IND_CD1, '13') ~ '13',
+      str_detect(IND_CD1, '14') ~ '14',
+      str_detect(IND_CD1, '15') ~ '15',
+      str_detect(IND_CD1, '16') ~ '16',
+      str_detect(IND_CD1, '17') ~ '17',
+      str_detect(IND_CD1, '18') ~ '18',
+      str_detect(IND_CD1, '20') ~ '20',
+      str_detect(IND_CD1, '21') ~ '21',
+      str_detect(IND_CD1, '22') ~ '22',
+      str_detect(IND_CD1, '23') ~ '23',
+      str_detect(IND_CD1, '24') ~ '24',
+      str_detect(IND_CD1, '25') ~ '25',
+      str_detect(IND_CD1, '26') ~ '26',
+      str_detect(IND_CD1, '27') ~ '27',
+      str_detect(IND_CD1, '28') ~ '28',
+      str_detect(IND_CD1, '29') ~ '29',
+      str_detect(IND_CD1, '30') ~ '30',
+      str_detect(IND_CD1, '31') ~ '31',
+      str_detect(IND_CD1, '32') ~ '32',
+      str_detect(IND_CD1, '33') ~ '33',
+      TRUE ~ NA_character_),
+    IND_CD = as.numeric(IND_CD),
+    # ESTB_GB = as.numeric(ESTB_GB),
+    # PB_ORG_TYP = as.numeric(PB_ORG_TYP),
+    
+    # FR_INVST_CORP_YN, VENT_YN, MDSCO_PRTC_YN : YN을 1과 0으로 구분
+    FR_IVST_CORP_GB = ifelse(FR_IVST_CORP_YN == "Y", 1, 0), # 국외투자 법인 여부
+    VENT_GB = ifelse(VENT_YN == "Y", 1, 0),                 # 벤처기업여부
+    MDSCO_PRTC_GB = ifelse(MDSCO_PRTC_YN == "Y", 1, 0),     # 중견기업 보호여부
+    
+    # PBCO_GB, HDOF_BR_GB : 바이너리 변수로 가공
+    PBCO_GB = ifelse(PBCO_GB == "1", 1, 0),                 # 1: 공기업
+    HDOF_BR_GB = ifelse(HDOF_BR_GB == "1", 1, 0),           # 1: 본점
+    
+    # LIST_CD -> LIST_GB 라는 파생변수 만들기
+    LIST_GB = ifelse(is.na(LIST_CD), 0, 1),                 # 1: 상장
+    
+    #결측값을 median으로 변경
+    EMP_CNT = ifelse(is.na(EMP_CNT), median(EMP_CNT, na.rm = T), EMP_CNT)
+  ) %>%
+  filter(!is.na(IND_CD)
+  ) %>%
+  select(-c('FR_IVST_CORP_YN', 'VENT_YN', 'MDSCO_PRTC_YN', 'LIST_CD', 'LIST_DATE'))
+
+for (i in 1:length(unique(data1$BZ_TYP))) {
+  data1[data1$BZ_TYP == unique(data1$BZ_TYP)[i], 'BZ_TYP'] = as.character(i)
+}
+data1$BIZ_NO = as.numeric(data1$BIZ_NO)
+data1$BZ_TYP = as.numeric(data1$BZ_TYP)
+data1$ESTB_GB = as.numeric(data1$ESTB_GB)
+data1$PB_ORG_TYP = as.numeric(data1$PB_ORG_TYP)
+
+# convert values in date column to date
+data1$ESTB_DATE <- as.POSIXct(as.numeric(data1$ESTB_DATE), origin='1970-01-01') # 설립날짜
+data1$STAT_OCR_DATE <- as.POSIXct(as.numeric(data1$STAT_OCR_DATE), origin='1970-01-01') # 상태발생날짜
+data1$END_DATE <- as.POSIXct(as.numeric(data1$END_DATE), origin='1970-01-01') # 종료날짜
+
+data1 = data1 %>%
+  mutate(EMP_CNT = ifelse(is.na(EMP_CNT), median(EMP_CNT, na.rm = T), EMP_CNT))
+
+data1
+
+
+# Financial Data
+
+# load data
+finance  <- read.table("data/finance.txt", sep="\t", header = T, fileEncoding = "euc-kr") %>% as_tibble()
+
+# rename
+finance <- finance %>% rename(
+  BIZ_NO = 사업자번호,
+  STT_DATE = 결산년월,
+  CUR_AST = 유동자산,
+  TAN_AST = 유형자산,
+  TOTAL_AST = 자산총계,
+  REVENUE = 매출액,
+  OPR_EXP = 판매비와관리비,
+  OPR_GAIN = 매출액영업이익률,
+  DEBT = 부채비율,
+  TOTAL_DEBT = 차입금의존도,
+  EQUITY = 자기자본비율,
+  CST_SALES = 매출원가) %>% select(c(
+    'BIZ_NO', 'STT_DATE', 'CUR_AST',
+    'TAN_AST', 'TOTAL_AST', 'REVENUE', 'OPR_EXP',
+    'OPR_GAIN', 'DEBT', 'TOTAL_DEBT', 'EQUITY',
+    'CST_SALES'
+  ))
+
+# leave only the most recent finance data
+tmp = aggregate(x = finance$STT_DATE, by = list(finance$BIZ_NO), FUN = max) %>% as_tibble()
+names(tmp) = c('BIZ_NO', 'STT_DATE')
+finance = tmp %>% left_join(finance, by = c("BIZ_NO", "STT_DATE"))
+
+
+# External Data
+
+SBHI1 <- read_excel("data/경기전반 실적 SBHI new.xlsx", sheet = 1) # 경기전반 실적 SBHI
+SBHI2 <- read_excel("data/고용수준 실적 SBHI.xlsx", sheet = 1) # 고용수준 실적 SBHI
+SBHI3 <- read_excel("data/내수판매 실적 SBHI.xlsx", sheet = 1) # 내수판매 실적 SBHI
+SBHI4 <- read_excel("data/생산설비수준 실적 SBHI.xlsx", sheet = 1) # 생산설비수준 실적 SBHI
+SBHI5 <- read_excel("data/생산실적 SBHI.xlsx", sheet = 1) # 생산실적 SBHI
+SBHI6 <- read_excel("data/평균가동률.xlsx", sheet = 1) # 평균가동률
+SBHI7 <- read_excel("data/영업이익 실적 SBHI.xlsx", sheet = 1) # 영업이익 실적 SBHI
+SBHI8 <- read_excel("data/원자재조달사정 실적 SBHI.xlsx", sheet = 1) # 원자재조달사정 실적 SBHI
+SBHI9 <- read_excel("data/자금사정 실적 SBHI.xlsx", sheet = 1) # 자금사정 실적 SBHI
+SBHI10 <- read_excel("data/제품재고수준 실적 SBHI.xlsx", sheet = 1) # 제품재고수준 실적 SBHI
+LOAN <- read_excel("data/대출잔액.xlsx", sheet = 1)
+
+
+## Economic Performance SBHI1
+
+SBHI1 <- SBHI1 %>%
+  mutate(SBHI1_MEAN18 = round((`2018.01` + `2018.02` + `2018.03` + `2018.04` + `2018.05` +
+                                 `2018.06` + `2018.07` + `2018.08` + `2018.09` + `2018.10` +
+                                 `2018.11` + `2018.12`)/12, 1),
+         SBHI1_MEAN19 = round((`2019.01` + `2019.02` + `2019.03` + `2019.04` + `2019.05` +
+                                 `2019.06` + `2019.07` + `2019.08` + `2019.09` + `2019.10` +
+                                 `2019.11` + `2019.12`)/12, 1),
+         SBHI1_MEAN20 = round((`2020.01` + `2020.02` + `2020.03` + `2020.04` + `2020.05` +
+                                 `2020.06` + `2020.07` + `2020.08` + `2020.09` + `2020.10` +
+                                 `2020.11` + `2020.12`)/12, 1),
+         SBHI1_MEAN21 = round((`2021.01` + `2021.02` + `2021.03` + `2021.04` + `2021.05` +
+                                 `2021.06` + `2021.07` + `2021.08` + `2021.09` + `2021.10` +
+                                 `2021.11` + `2021.12`)/12, 1),
+         SBHI1_MEAN22 = round((`2022.01` + `2022.02` + `2022.03` + `2022.04` + `2022.05` +
+                                 `2022.06`)/6, 1)
+  ) %>%
+  # 구분별(1): 제조업 - 구분별(2): 업종별 filtering
+  filter(`구분별(3)` %in% c("식료품", "음료", "섬유제품;의복제외",
+                         "의복,의복악세서리및모피제품", "가죽,가방및신발",
+                         "목재및나무제품;가구제외", "펄프,종이및종이제품",
+                         "인쇄및기록매체복제업", "화학물질및화학제품;의약품제외",
+                         "의료용물질및의약품", "고무제품및플라스틱제품",
+                         "비금속광물제품", "1차금속",
+                         "금속가공제품;기계및가구제외",
+                         "전자부품,컴퓨터,영상,음향및통신장비",
+                         "의료,정밀,광학기기및시계", "전기장비",
+                         "기타기계및장비", "자동차및트레일러",
+                         "기타운송장비", "가구", "기타제품")
+  ) %>%
+  select(c(`구분별(1)`, `구분별(2)`, `구분별(3)`,
+           'SBHI1_MEAN18', 'SBHI1_MEAN19', 'SBHI1_MEAN20', 'SBHI1_MEAN20',
+           'SBHI1_MEAN21', 'SBHI1_MEAN22')) %>%
+  mutate(IND_CD = recode(`구분별(3)`,
+                         "식료품" = 10, "음료" = 11, "섬유제품;의복제외" = 13,
+                         "의복,의복악세서리및모피제품" = 14, "가죽,가방및신발" = 15,
+                         "목재및나무제품;가구제외" = 16, "펄프,종이및종이제품" = 17,
+                         "인쇄및기록매체복제업" = 18,
+                         "화학물질및화학제품;의약품제외" = 20,
+                         "의료용물질및의약품" = 21, "고무제품및플라스틱제품" = 22,
+                         "비금속광물제품" = 23, "1차금속" = 24, 
+                         "금속가공제품;기계및가구제외" = 25,
+                         "전자부품,컴퓨터,영상,음향및통신장비" = 26,
+                         "의료,정밀,광학기기및시계" = 27, "전기장비" = 28,
+                         "기타기계및장비" = 29, "자동차및트레일러" = 30,
+                         "기타운송장비" = 31, "가구" = 32, "기타제품" = 33
+  )) %>%
+  rename(SBHI1_SORT1 = `구분별(1)`,
+         SBHI1_SORT2 = `구분별(2)`,
+         SBHI1_SORT3 = `구분별(3)`)
+
+
+## Employment Level Performance SBHI2
+
+SBHI2 <- SBHI2 %>%
+  mutate(SBHI2_MEAN18 = round((`2018.01` + `2018.02` + `2018.03` + `2018.04` + `2018.05` +
+                                 `2018.06` + `2018.07` + `2018.08` + `2018.09` + `2018.10` +
+                                 `2018.11` + `2018.12`)/12, 1),
+         SBHI2_MEAN19 = round((`2019.01` + `2019.02` + `2019.03` + `2019.04` + `2019.05` +
+                                 `2019.06` + `2019.07` + `2019.08` + `2019.09` + `2019.10` +
+                                 `2019.11` + `2019.12`)/12, 1),
+         SBHI2_MEAN20 = round((`2020.01` + `2020.02` + `2020.03` + `2020.04` + `2020.05` +
+                                 `2020.06` + `2020.07` + `2020.08` + `2020.09` + `2020.10` +
+                                 `2020.11` + `2020.12`)/12, 1),
+         SBHI2_MEAN21 = round((`2021.01` + `2021.02` + `2021.03` + `2021.04` + `2021.05` +
+                                 `2021.06` + `2021.07` + `2021.08` + `2021.09` + `2021.10` +
+                                 `2021.11` + `2021.12`)/12, 1),
+         SBHI2_MEAN22 = round((`2022.01` + `2022.02` + `2022.03` + `2022.04` + `2022.05` +
+                                 `2022.06`)/6, 1)
+  ) %>%
+  # 구분별(1): 제조업 - 구분별(2): 업종별 filtering
+  filter(`구분별(3)` %in% c("식료품", "음료", "섬유제품;의복제외",
+                         "의복,의복악세서리및모피제품", "가죽,가방및신발",
+                         "목재및나무제품;가구제외", "펄프,종이및종이제품",
+                         "인쇄및기록매체복제업", "화학물질및화학제품;의약품제외",
+                         "의료용물질및의약품", "고무제품및플라스틱제품",
+                         "비금속광물제품", "1차금속",
+                         "금속가공제품;기계및가구제외",
+                         "전자부품,컴퓨터,영상,음향및통신장비",
+                         "의료,정밀,광학기기및시계", "전기장비",
+                         "기타기계및장비", "자동차및트레일러",
+                         "기타운송장비", "가구", "기타제품")
+  ) %>%
+  select(c(`구분별(1)`, `구분별(2)`, `구분별(3)`,
+           'SBHI2_MEAN18', 'SBHI2_MEAN19', 'SBHI2_MEAN20', 'SBHI2_MEAN20',
+           'SBHI2_MEAN21', 'SBHI2_MEAN22')) %>%
+  mutate(IND_CD = recode(`구분별(3)`,
+                         "식료품" = 10, "음료" = 11, "섬유제품;의복제외" = 13,
+                         "의복,의복악세서리및모피제품" = 14, "가죽,가방및신발" = 15,
+                         "목재및나무제품;가구제외" = 16, "펄프,종이및종이제품" = 17,
+                         "인쇄및기록매체복제업" = 18,
+                         "화학물질및화학제품;의약품제외" = 20,
+                         "의료용물질및의약품" = 21, "고무제품및플라스틱제품" = 22,
+                         "비금속광물제품" = 23, "1차금속" = 24, 
+                         "금속가공제품;기계및가구제외" = 25,
+                         "전자부품,컴퓨터,영상,음향및통신장비" = 26,
+                         "의료,정밀,광학기기및시계" = 27, "전기장비" = 28,
+                         "기타기계및장비" = 29, "자동차및트레일러" = 30,
+                         "기타운송장비" = 31, "가구" = 32, "기타제품" = 33
+  )) %>%
+  rename(SBHI2_SORT1 = `구분별(1)`,
+         SBHI2_SORT2 = `구분별(2)`,
+         SBHI2_SORT3 = `구분별(3)`)
+
+
+## Domestic Sales Performance SBHI3
+
+SBHI3 <- SBHI3 %>%
+  mutate(SBHI3_MEAN18 = round((`2018.01` + `2018.02` + `2018.03` + `2018.04` + `2018.05` +
+                                 `2018.06` + `2018.07` + `2018.08` + `2018.09` + `2018.10` +
+                                 `2018.11` + `2018.12`)/12, 1),
+         SBHI3_MEAN19 = round((`2019.01` + `2019.02` + `2019.03` + `2019.04` + `2019.05` +
+                                 `2019.06` + `2019.07` + `2019.08` + `2019.09` + `2019.10` +
+                                 `2019.11` + `2019.12`)/12, 1),
+         SBHI3_MEAN20 = round((`2020.01` + `2020.02` + `2020.03` + `2020.04` + `2020.05` +
+                                 `2020.06` + `2020.07` + `2020.08` + `2020.09` + `2020.10` +
+                                 `2020.11` + `2020.12`)/12, 1),
+         SBHI3_MEAN21 = round((`2021.01` + `2021.02` + `2021.03` + `2021.04` + `2021.05` +
+                                 `2021.06` + `2021.07` + `2021.08` + `2021.09` + `2021.10` +
+                                 `2021.11` + `2021.12`)/12, 1),
+         SBHI3_MEAN22 = round((`2022.01` + `2022.02` + `2022.03` + `2022.04` + `2022.05` +
+                                 `2022.06`)/6, 1)
+  ) %>%
+  # 구분별(1): 제조업 - 구분별(2): 업종별 filtering
+  filter(`구분별(3)` %in% c("식료품", "음료", "섬유제품;의복제외",
+                         "의복,의복악세서리및모피제품", "가죽,가방및신발",
+                         "목재및나무제품;가구제외", "펄프,종이및종이제품",
+                         "인쇄및기록매체복제업", "화학물질및화학제품;의약품제외",
+                         "의료용물질및의약품", "고무제품및플라스틱제품",
+                         "비금속광물제품", "1차금속",
+                         "금속가공제품;기계및가구제외",
+                         "전자부품,컴퓨터,영상,음향및통신장비",
+                         "의료,정밀,광학기기및시계", "전기장비",
+                         "기타기계및장비", "자동차및트레일러",
+                         "기타운송장비", "가구", "기타제품")
+  ) %>%
+  select(c(`구분별(1)`, `구분별(2)`, `구분별(3)`,
+           'SBHI3_MEAN18', 'SBHI3_MEAN19', 'SBHI3_MEAN20', 'SBHI3_MEAN20',
+           'SBHI3_MEAN21', 'SBHI3_MEAN22')) %>%
+  mutate(IND_CD = recode(`구분별(3)`,
+                         "식료품" = 10, "음료" = 11, "섬유제품;의복제외" = 13,
+                         "의복,의복악세서리및모피제품" = 14, "가죽,가방및신발" = 15,
+                         "목재및나무제품;가구제외" = 16, "펄프,종이및종이제품" = 17,
+                         "인쇄및기록매체복제업" = 18,
+                         "화학물질및화학제품;의약품제외" = 20,
+                         "의료용물질및의약품" = 21, "고무제품및플라스틱제품" = 22,
+                         "비금속광물제품" = 23, "1차금속" = 24, 
+                         "금속가공제품;기계및가구제외" = 25,
+                         "전자부품,컴퓨터,영상,음향및통신장비" = 26,
+                         "의료,정밀,광학기기및시계" = 27, "전기장비" = 28,
+                         "기타기계및장비" = 29, "자동차및트레일러" = 30,
+                         "기타운송장비" = 31, "가구" = 32, "기타제품" = 33
+  )) %>%
+  rename(SBHI3_SORT1 = `구분별(1)`,
+         SBHI3_SORT2 = `구분별(2)`,
+         SBHI3_SORT3 = `구분별(3)`)
+
+
+## Production Facility Level Performance SBHI4
+
+SBHI4 <- SBHI4 %>%
+  mutate(SBHI4_MEAN18 = round((`2018.01` + `2018.02` + `2018.03` + `2018.04` + `2018.05` +
+                                 `2018.06` + `2018.07` + `2018.08` + `2018.09` + `2018.10` +
+                                 `2018.11` + `2018.12`)/12, 1),
+         SBHI4_MEAN19 = round((`2019.01` + `2019.02` + `2019.03` + `2019.04` + `2019.05` +
+                                 `2019.06` + `2019.07` + `2019.08` + `2019.09` + `2019.10` +
+                                 `2019.11` + `2019.12`)/12, 1),
+         SBHI4_MEAN20 = round((`2020.01` + `2020.02` + `2020.03` + `2020.04` + `2020.05` +
+                                 `2020.06` + `2020.07` + `2020.08` + `2020.09` + `2020.10` +
+                                 `2020.11` + `2020.12`)/12, 1),
+         SBHI4_MEAN21 = round((`2021.01` + `2021.02` + `2021.03` + `2021.04` + `2021.05` +
+                                 `2021.06` + `2021.07` + `2021.08` + `2021.09` + `2021.10` +
+                                 `2021.11` + `2021.12`)/12, 1),
+         SBHI4_MEAN22 = round((`2022.01` + `2022.02` + `2022.03` + `2022.04` + `2022.05` +
+                                 `2022.06`)/6, 1)
+  ) %>%
+  # 구분별(1): 제조업 - 구분별(2): 업종별 filtering
+  filter(`구분별(3)` %in% c("식료품", "음료", "섬유제품;의복제외",
+                         "의복,의복악세서리및모피제품", "가죽,가방및신발",
+                         "목재및나무제품;가구제외", "펄프,종이및종이제품",
+                         "인쇄및기록매체복제업", "화학물질및화학제품;의약품제외",
+                         "의료용물질및의약품", "고무제품및플라스틱제품",
+                         "비금속광물제품", "1차금속",
+                         "금속가공제품;기계및가구제외",
+                         "전자부품,컴퓨터,영상,음향및통신장비",
+                         "의료,정밀,광학기기및시계", "전기장비",
+                         "기타기계및장비", "자동차및트레일러",
+                         "기타운송장비", "가구", "기타제품")
+  ) %>%
+  select(c(`구분별(1)`, `구분별(2)`, `구분별(3)`,
+           'SBHI4_MEAN18', 'SBHI4_MEAN19', 'SBHI4_MEAN20', 'SBHI4_MEAN20',
+           'SBHI4_MEAN21', 'SBHI4_MEAN22')) %>%
+  mutate(IND_CD = recode(`구분별(3)`,
+                         "식료품" = 10, "음료" = 11, "섬유제품;의복제외" = 13,
+                         "의복,의복악세서리및모피제품" = 14, "가죽,가방및신발" = 15,
+                         "목재및나무제품;가구제외" = 16, "펄프,종이및종이제품" = 17,
+                         "인쇄및기록매체복제업" = 18,
+                         "화학물질및화학제품;의약품제외" = 20,
+                         "의료용물질및의약품" = 21, "고무제품및플라스틱제품" = 22,
+                         "비금속광물제품" = 23, "1차금속" = 24, 
+                         "금속가공제품;기계및가구제외" = 25,
+                         "전자부품,컴퓨터,영상,음향및통신장비" = 26,
+                         "의료,정밀,광학기기및시계" = 27, "전기장비" = 28,
+                         "기타기계및장비" = 29, "자동차및트레일러" = 30,
+                         "기타운송장비" = 31, "가구" = 32, "기타제품" = 33
+  )) %>%
+  rename(SBHI4_SORT1 = `구분별(1)`,
+         SBHI4_SORT2 = `구분별(2)`,
+         SBHI4_SORT3 = `구분별(3)`)
+
+
+## Production Performance SBHI5
+
+SBHI5 <- SBHI5 %>%
+  mutate(SBHI5_MEAN18 = round((`2018.01` + `2018.02` + `2018.03` + `2018.04` + `2018.05` +
+                                 `2018.06` + `2018.07` + `2018.08` + `2018.09` + `2018.10` +
+                                 `2018.11` + `2018.12`)/12, 1),
+         SBHI5_MEAN19 = round((`2019.01` + `2019.02` + `2019.03` + `2019.04` + `2019.05` +
+                                 `2019.06` + `2019.07` + `2019.08` + `2019.09` + `2019.10` +
+                                 `2019.11` + `2019.12`)/12, 1),
+         SBHI5_MEAN20 = round((`2020.01` + `2020.02` + `2020.03` + `2020.04` + `2020.05` +
+                                 `2020.06` + `2020.07` + `2020.08` + `2020.09` + `2020.10` +
+                                 `2020.11` + `2020.12`)/12, 1),
+         SBHI5_MEAN21 = round((`2021.01` + `2021.02` + `2021.03` + `2021.04` + `2021.05` +
+                                 `2021.06` + `2021.07` + `2021.08` + `2021.09` + `2021.10` +
+                                 `2021.11` + `2021.12`)/12, 1),
+         SBHI5_MEAN22 = round((`2022.01` + `2022.02` + `2022.03` + `2022.04` + `2022.05` +
+                                 `2022.06`)/6, 1)
+  ) %>%
+  # 구분별(1): 제조업 - 구분별(2): 업종별 filtering
+  filter(`구분별(3)` %in% c("식료품", "음료", "섬유제품;의복제외",
+                         "의복,의복악세서리및모피제품", "가죽,가방및신발",
+                         "목재및나무제품;가구제외", "펄프,종이및종이제품",
+                         "인쇄및기록매체복제업", "화학물질및화학제품;의약품제외",
+                         "의료용물질및의약품", "고무제품및플라스틱제품",
+                         "비금속광물제품", "1차금속",
+                         "금속가공제품;기계및가구제외",
+                         "전자부품,컴퓨터,영상,음향및통신장비",
+                         "의료,정밀,광학기기및시계", "전기장비",
+                         "기타기계및장비", "자동차및트레일러",
+                         "기타운송장비", "가구", "기타제품")
+  ) %>%
+  select(c(`구분별(1)`, `구분별(2)`, `구분별(3)`,
+           'SBHI5_MEAN18', 'SBHI5_MEAN19', 'SBHI5_MEAN20', 'SBHI5_MEAN20',
+           'SBHI5_MEAN21', 'SBHI5_MEAN22')) %>%
+  mutate(IND_CD = recode(`구분별(3)`,
+                         "식료품" = 10, "음료" = 11, "섬유제품;의복제외" = 13,
+                         "의복,의복악세서리및모피제품" = 14, "가죽,가방및신발" = 15,
+                         "목재및나무제품;가구제외" = 16, "펄프,종이및종이제품" = 17,
+                         "인쇄및기록매체복제업" = 18,
+                         "화학물질및화학제품;의약품제외" = 20,
+                         "의료용물질및의약품" = 21, "고무제품및플라스틱제품" = 22,
+                         "비금속광물제품" = 23, "1차금속" = 24, 
+                         "금속가공제품;기계및가구제외" = 25,
+                         "전자부품,컴퓨터,영상,음향및통신장비" = 26,
+                         "의료,정밀,광학기기및시계" = 27, "전기장비" = 28,
+                         "기타기계및장비" = 29, "자동차및트레일러" = 30,
+                         "기타운송장비" = 31, "가구" = 32, "기타제품" = 33
+  )) %>%
+  rename(SBHI5_SORT1 = `구분별(1)`,
+         SBHI5_SORT2 = `구분별(2)`,
+         SBHI5_SORT3 = `구분별(3)`)
+
+
+## Export Performance SBHI6
+
+SBHI6 <- SBHI6 %>%
+  mutate(SBHI6_MEAN18 = round((`2018.01` + `2018.02` + `2018.03` + `2018.04` + `2018.05` +
+                                 `2018.06` + `2018.07` + `2018.08` + `2018.09` + `2018.10` +
+                                 `2018.11` + `2018.12`)/12, 1),
+         SBHI6_MEAN19 = round((`2019.01` + `2019.02` + `2019.03` + `2019.04` + `2019.05` +
+                                 `2019.06` + `2019.07` + `2019.08` + `2019.09` + `2019.10` +
+                                 `2019.11` + `2019.12`)/12, 1),
+         SBHI6_MEAN20 = round((`2020.01` + `2020.02` + `2020.03` + `2020.04` + `2020.05` +
+                                 `2020.06` + `2020.07` + `2020.08` + `2020.09` + `2020.10` +
+                                 `2020.11` + `2020.12`)/12, 1),
+         SBHI6_MEAN21 = round((`2021.01` + `2021.02` + `2021.03` + `2021.04` + `2021.05` +
+                                 `2021.06` + `2021.07` + `2021.08` + `2021.09` + `2021.10` +
+                                 `2021.11` + `2021.12`)/12, 1),
+         SBHI6_MEAN22 = round((`2022.01` + `2022.02` + `2022.03` + `2022.04` + `2022.05` +
+                                 `2022.06`)/6, 1)
+  ) %>%
+  # 구분별(1): 제조업 - 구분별(2): 업종별 filtering
+  filter(`구분별(3)` %in% c("식료품", "음료", "섬유제품;의복제외",
+                         "의복,의복악세서리및모피제품", "가죽,가방및신발",
+                         "목재및나무제품;가구제외", "펄프,종이및종이제품",
+                         "인쇄및기록매체복제업", "화학물질및화학제품;의약품제외",
+                         "의료용물질및의약품", "고무제품및플라스틱제품",
+                         "비금속광물제품", "1차금속",
+                         "금속가공제품;기계및가구제외",
+                         "전자부품,컴퓨터,영상,음향및통신장비",
+                         "의료,정밀,광학기기및시계", "전기장비",
+                         "기타기계및장비", "자동차및트레일러",
+                         "기타운송장비", "가구", "기타제품")
+  ) %>%
+  select(c(`구분별(1)`, `구분별(2)`, `구분별(3)`,
+           'SBHI6_MEAN18', 'SBHI6_MEAN19', 'SBHI6_MEAN20', 'SBHI6_MEAN20',
+           'SBHI6_MEAN21', 'SBHI6_MEAN22')) %>%
+  mutate(IND_CD = recode(`구분별(3)`,
+                         "식료품" = 10, "음료" = 11, "섬유제품;의복제외" = 13,
+                         "의복,의복악세서리및모피제품" = 14, "가죽,가방및신발" = 15,
+                         "목재및나무제품;가구제외" = 16, "펄프,종이및종이제품" = 17,
+                         "인쇄및기록매체복제업" = 18,
+                         "화학물질및화학제품;의약품제외" = 20,
+                         "의료용물질및의약품" = 21, "고무제품및플라스틱제품" = 22,
+                         "비금속광물제품" = 23, "1차금속" = 24, 
+                         "금속가공제품;기계및가구제외" = 25,
+                         "전자부품,컴퓨터,영상,음향및통신장비" = 26,
+                         "의료,정밀,광학기기및시계" = 27, "전기장비" = 28,
+                         "기타기계및장비" = 29, "자동차및트레일러" = 30,
+                         "기타운송장비" = 31, "가구" = 32, "기타제품" = 33
+  )) %>%
+  rename(SBHI6_SORT1 = `구분별(1)`,
+         SBHI6_SORT2 = `구분별(2)`,
+         SBHI6_SORT3 = `구분별(3)`)
+
+
+## Operating Profit Performance SBHI7
+
+SBHI7 <- SBHI7 %>%
+  mutate(SBHI7_MEAN18 = round((`2018.01` + `2018.02` + `2018.03` + `2018.04` + `2018.05` +
+                                 `2018.06` + `2018.07` + `2018.08` + `2018.09` + `2018.10` +
+                                 `2018.11` + `2018.12`)/12, 1),
+         SBHI7_MEAN19 = round((`2019.01` + `2019.02` + `2019.03` + `2019.04` + `2019.05` +
+                                 `2019.06` + `2019.07` + `2019.08` + `2019.09` + `2019.10` +
+                                 `2019.11` + `2019.12`)/12, 1),
+         SBHI7_MEAN20 = round((`2020.01` + `2020.02` + `2020.03` + `2020.04` + `2020.05` +
+                                 `2020.06` + `2020.07` + `2020.08` + `2020.09` + `2020.10` +
+                                 `2020.11` + `2020.12`)/12, 1),
+         SBHI7_MEAN21 = round((`2021.01` + `2021.02` + `2021.03` + `2021.04` + `2021.05` +
+                                 `2021.06` + `2021.07` + `2021.08` + `2021.09` + `2021.10` +
+                                 `2021.11` + `2021.12`)/12, 1),
+         SBHI7_MEAN22 = round((`2022.01` + `2022.02` + `2022.03` + `2022.04` + `2022.05` +
+                                 `2022.06`)/6, 1)
+  ) %>%
+  # 구분별(1): 제조업 - 구분별(2): 업종별 filtering
+  filter(`구분별(3)` %in% c("식료품", "음료", "섬유제품;의복제외",
+                         "의복,의복악세서리및모피제품", "가죽,가방및신발",
+                         "목재및나무제품;가구제외", "펄프,종이및종이제품",
+                         "인쇄및기록매체복제업", "화학물질및화학제품;의약품제외",
+                         "의료용물질및의약품", "고무제품및플라스틱제품",
+                         "비금속광물제품", "1차금속",
+                         "금속가공제품;기계및가구제외",
+                         "전자부품,컴퓨터,영상,음향및통신장비",
+                         "의료,정밀,광학기기및시계", "전기장비",
+                         "기타기계및장비", "자동차및트레일러",
+                         "기타운송장비", "가구", "기타제품")
+  ) %>%
+  select(c(`구분별(1)`, `구분별(2)`, `구분별(3)`,
+           'SBHI7_MEAN18', 'SBHI7_MEAN19', 'SBHI7_MEAN20', 'SBHI7_MEAN20',
+           'SBHI7_MEAN21', 'SBHI7_MEAN22')) %>%
+  mutate(IND_CD = recode(`구분별(3)`,
+                         "식료품" = 10, "음료" = 11, "섬유제품;의복제외" = 13,
+                         "의복,의복악세서리및모피제품" = 14, "가죽,가방및신발" = 15,
+                         "목재및나무제품;가구제외" = 16, "펄프,종이및종이제품" = 17,
+                         "인쇄및기록매체복제업" = 18,
+                         "화학물질및화학제품;의약품제외" = 20,
+                         "의료용물질및의약품" = 21, "고무제품및플라스틱제품" = 22,
+                         "비금속광물제품" = 23, "1차금속" = 24, 
+                         "금속가공제품;기계및가구제외" = 25,
+                         "전자부품,컴퓨터,영상,음향및통신장비" = 26,
+                         "의료,정밀,광학기기및시계" = 27, "전기장비" = 28,
+                         "기타기계및장비" = 29, "자동차및트레일러" = 30,
+                         "기타운송장비" = 31, "가구" = 32, "기타제품" = 33
+  )) %>%
+  rename(SBHI7_SORT1 = `구분별(1)`,
+         SBHI7_SORT2 = `구분별(2)`,
+         SBHI7_SORT3 = `구분별(3)`)
+
+
+## Raw Material Procurement Conditions Performance SBHI8
+
+SBHI8 <- SBHI8 %>%
+  mutate(SBHI8_MEAN18 = round((`2018.01` + `2018.02` + `2018.03` + `2018.04` + `2018.05` +
+                                 `2018.06` + `2018.07` + `2018.08` + `2018.09` + `2018.10` +
+                                 `2018.11` + `2018.12`)/12, 1),
+         SBHI8_MEAN19 = round((`2019.01` + `2019.02` + `2019.03` + `2019.04` + `2019.05` +
+                                 `2019.06` + `2019.07` + `2019.08` + `2019.09` + `2019.10` +
+                                 `2019.11` + `2019.12`)/12, 1),
+         SBHI8_MEAN20 = round((`2020.01` + `2020.02` + `2020.03` + `2020.04` + `2020.05` +
+                                 `2020.06` + `2020.07` + `2020.08` + `2020.09` + `2020.10` +
+                                 `2020.11` + `2020.12`)/12, 1),
+         SBHI8_MEAN21 = round((`2021.01` + `2021.02` + `2021.03` + `2021.04` + `2021.05` +
+                                 `2021.06` + `2021.07` + `2021.08` + `2021.09` + `2021.10` +
+                                 `2021.11` + `2021.12`)/12, 1),
+         SBHI8_MEAN22 = round((`2022.01` + `2022.02` + `2022.03` + `2022.04` + `2022.05` +
+                                 `2022.06`)/6, 1)
+  ) %>%
+  # 구분별(1): 제조업 - 구분별(2): 업종별 filtering
+  filter(`구분별(3)` %in% c("식료품", "음료", "섬유제품;의복제외",
+                         "의복,의복악세서리및모피제품", "가죽,가방및신발",
+                         "목재및나무제품;가구제외", "펄프,종이및종이제품",
+                         "인쇄및기록매체복제업", "화학물질및화학제품;의약품제외",
+                         "의료용물질및의약품", "고무제품및플라스틱제품",
+                         "비금속광물제품", "1차금속",
+                         "금속가공제품;기계및가구제외",
+                         "전자부품,컴퓨터,영상,음향및통신장비",
+                         "의료,정밀,광학기기및시계", "전기장비",
+                         "기타기계및장비", "자동차및트레일러",
+                         "기타운송장비", "가구", "기타제품")
+  ) %>%
+  select(c(`구분별(1)`, `구분별(2)`, `구분별(3)`,
+           'SBHI8_MEAN18', 'SBHI8_MEAN19', 'SBHI8_MEAN20', 'SBHI8_MEAN20',
+           'SBHI8_MEAN21', 'SBHI8_MEAN22')) %>%
+  mutate(IND_CD = recode(`구분별(3)`,
+                         "식료품" = 10, "음료" = 11, "섬유제품;의복제외" = 13,
+                         "의복,의복악세서리및모피제품" = 14, "가죽,가방및신발" = 15,
+                         "목재및나무제품;가구제외" = 16, "펄프,종이및종이제품" = 17,
+                         "인쇄및기록매체복제업" = 18,
+                         "화학물질및화학제품;의약품제외" = 20,
+                         "의료용물질및의약품" = 21, "고무제품및플라스틱제품" = 22,
+                         "비금속광물제품" = 23, "1차금속" = 24, 
+                         "금속가공제품;기계및가구제외" = 25,
+                         "전자부품,컴퓨터,영상,음향및통신장비" = 26,
+                         "의료,정밀,광학기기및시계" = 27, "전기장비" = 28,
+                         "기타기계및장비" = 29, "자동차및트레일러" = 30,
+                         "기타운송장비" = 31, "가구" = 32, "기타제품" = 33
+  )) %>%
+  rename(SBHI8_SORT1 = `구분별(1)`,
+         SBHI8_SORT2 = `구분별(2)`,
+         SBHI8_SORT3 = `구분별(3)`)
+
+
+## Financial Condition Performance SBHI9
+
+SBHI9 <- SBHI9 %>%
+  mutate(SBHI9_MEAN18 = round((`2018.01` + `2018.02` + `2018.03` + `2018.04` + `2018.05` +
+                                 `2018.06` + `2018.07` + `2018.08` + `2018.09` + `2018.10` +
+                                 `2018.11` + `2018.12`)/12, 1),
+         SBHI9_MEAN19 = round((`2019.01` + `2019.02` + `2019.03` + `2019.04` + `2019.05` +
+                                 `2019.06` + `2019.07` + `2019.08` + `2019.09` + `2019.10` +
+                                 `2019.11` + `2019.12`)/12, 1),
+         SBHI9_MEAN20 = round((`2020.01` + `2020.02` + `2020.03` + `2020.04` + `2020.05` +
+                                 `2020.06` + `2020.07` + `2020.08` + `2020.09` + `2020.10` +
+                                 `2020.11` + `2020.12`)/12, 1),
+         SBHI9_MEAN21 = round((`2021.01` + `2021.02` + `2021.03` + `2021.04` + `2021.05` +
+                                 `2021.06` + `2021.07` + `2021.08` + `2021.09` + `2021.10` +
+                                 `2021.11` + `2021.12`)/12, 1),
+         SBHI9_MEAN22 = round((`2022.01` + `2022.02` + `2022.03` + `2022.04` + `2022.05` +
+                                 `2022.06`)/6, 1)
+  ) %>%
+  # 구분별(1): 제조업 - 구분별(2): 업종별 filtering
+  filter(`구분별(3)` %in% c("식료품", "음료", "섬유제품;의복제외",
+                         "의복,의복악세서리및모피제품", "가죽,가방및신발",
+                         "목재및나무제품;가구제외", "펄프,종이및종이제품",
+                         "인쇄및기록매체복제업", "화학물질및화학제품;의약품제외",
+                         "의료용물질및의약품", "고무제품및플라스틱제품",
+                         "비금속광물제품", "1차금속",
+                         "금속가공제품;기계및가구제외",
+                         "전자부품,컴퓨터,영상,음향및통신장비",
+                         "의료,정밀,광학기기및시계", "전기장비",
+                         "기타기계및장비", "자동차및트레일러",
+                         "기타운송장비", "가구", "기타제품")
+  ) %>%
+  select(c(`구분별(1)`, `구분별(2)`, `구분별(3)`,
+           'SBHI9_MEAN18', 'SBHI9_MEAN19', 'SBHI9_MEAN20', 'SBHI9_MEAN20',
+           'SBHI9_MEAN21', 'SBHI9_MEAN22')) %>%
+  mutate(IND_CD = recode(`구분별(3)`,
+                         "식료품" = 10, "음료" = 11, "섬유제품;의복제외" = 13,
+                         "의복,의복악세서리및모피제품" = 14, "가죽,가방및신발" = 15,
+                         "목재및나무제품;가구제외" = 16, "펄프,종이및종이제품" = 17,
+                         "인쇄및기록매체복제업" = 18,
+                         "화학물질및화학제품;의약품제외" = 20,
+                         "의료용물질및의약품" = 21, "고무제품및플라스틱제품" = 22,
+                         "비금속광물제품" = 23, "1차금속" = 24, 
+                         "금속가공제품;기계및가구제외" = 25,
+                         "전자부품,컴퓨터,영상,음향및통신장비" = 26,
+                         "의료,정밀,광학기기및시계" = 27, "전기장비" = 28,
+                         "기타기계및장비" = 29, "자동차및트레일러" = 30,
+                         "기타운송장비" = 31, "가구" = 32, "기타제품" = 33
+  )) %>%
+  rename(SBHI9_SORT1 = `구분별(1)`,
+         SBHI9_SORT2 = `구분별(2)`,
+         SBHI9_SORT3 = `구분별(3)`)
+
+
+## Product Inventory Level Performance SBHI10
+
+SBHI10 <- SBHI10 %>%
+  mutate(SBHI10_MEAN18 = round((`2018.01` + `2018.02` + `2018.03` + `2018.04` + `2018.05` +
+                                  `2018.06` + `2018.07` + `2018.08` + `2018.09` + `2018.10` +
+                                  `2018.11` + `2018.12`)/12, 1),
+         SBHI10_MEAN19 = round((`2019.01` + `2019.02` + `2019.03` + `2019.04` + `2019.05` +
+                                  `2019.06` + `2019.07` + `2019.08` + `2019.09` + `2019.10` +
+                                  `2019.11` + `2019.12`)/12, 1),
+         SBHI10_MEAN20 = round((`2020.01` + `2020.02` + `2020.03` + `2020.04` + `2020.05` +
+                                  `2020.06` + `2020.07` + `2020.08` + `2020.09` + `2020.10` +
+                                  `2020.11` + `2020.12`)/12, 1),
+         SBHI10_MEAN21 = round((`2021.01` + `2021.02` + `2021.03` + `2021.04` + `2021.05` +
+                                  `2021.06` + `2021.07` + `2021.08` + `2021.09` + `2021.10` +
+                                  `2021.11` + `2021.12`)/12, 1),
+         SBHI10_MEAN22 = round((`2022.01` + `2022.02` + `2022.03` + `2022.04` + `2022.05` +
+                                  `2022.06`)/6, 1)
+  ) %>%
+  # 구분별(1): 제조업 - 구분별(2): 업종별 filtering
+  filter(`구분별(3)` %in% c("식료품", "음료", "섬유제품;의복제외",
+                         "의복,의복악세서리및모피제품", "가죽,가방및신발",
+                         "목재및나무제품;가구제외", "펄프,종이및종이제품",
+                         "인쇄및기록매체복제업", "화학물질및화학제품;의약품제외",
+                         "의료용물질및의약품", "고무제품및플라스틱제품",
+                         "비금속광물제품", "1차금속",
+                         "금속가공제품;기계및가구제외",
+                         "전자부품,컴퓨터,영상,음향및통신장비",
+                         "의료,정밀,광학기기및시계", "전기장비",
+                         "기타기계및장비", "자동차및트레일러",
+                         "기타운송장비", "가구", "기타제품")
+  ) %>%
+  select(c(`구분별(1)`, `구분별(2)`, `구분별(3)`,
+           'SBHI10_MEAN18', 'SBHI10_MEAN19', 'SBHI10_MEAN20', 'SBHI10_MEAN20',
+           'SBHI10_MEAN21', 'SBHI10_MEAN22')) %>%
+  mutate(IND_CD = recode(`구분별(3)`,
+                         "식료품" = 10, "음료" = 11, "섬유제품;의복제외" = 13,
+                         "의복,의복악세서리및모피제품" = 14, "가죽,가방및신발" = 15,
+                         "목재및나무제품;가구제외" = 16, "펄프,종이및종이제품" = 17,
+                         "인쇄및기록매체복제업" = 18,
+                         "화학물질및화학제품;의약품제외" = 20,
+                         "의료용물질및의약품" = 21, "고무제품및플라스틱제품" = 22,
+                         "비금속광물제품" = 23, "1차금속" = 24, 
+                         "금속가공제품;기계및가구제외" = 25,
+                         "전자부품,컴퓨터,영상,음향및통신장비" = 26,
+                         "의료,정밀,광학기기및시계" = 27, "전기장비" = 28,
+                         "기타기계및장비" = 29, "자동차및트레일러" = 30,
+                         "기타운송장비" = 31, "가구" = 32, "기타제품" = 33
+  )) %>%
+  rename(SBHI10_SORT1 = `구분별(1)`,
+         SBHI10_SORT2 = `구분별(2)`,
+         SBHI10_SORT3 = `구분별(3)`)
+
+
+# EDA
+
+## Wordcloud with data
+
+MN_BIZ_CONT <- data$MN_BIZ_CONT
+word <- strsplit(MN_BIZ_CONT, " ")
+words <- unlist(word)
+words <- Filter(function(x){nchar(x) >= 2}, words)
+words <- gsub("\\d+", "", words)
+tab1 <- table(words)
+tab2 <- sort(tab1, decreasing = T)
+tab2
+tab3 <- tab2[2:201]
+pal <- brewer.pal(8, "Accent")
+wordcloud(names(tab3), freq=tab3, min.freq=1, scale=c(7, 0.1) ,colors=pal, random.order = F, rot.per=0.1, family="AppleGothic")
+
+
+# plots
+
+# 중소기업 연도별 대출잔액 평균
+LOAN <- LOAN %>%
+  mutate(
+    as.character(YEAR),
+    LOAN_MEAN = rowMeans(.[,2:13], na.rm = T)
+  )
+head(LOAN)
+
+LOAN %>% 
+  plot_ly() %>% 
+  add_trace(x = ~ YEAR, y = ~ LOAN_MEAN,  type = "bar") %>% 
+  layout(
+    title = "중소기업 연도별 대출잔액 평균",
+    xaxis = list(title = "연도"),
+    yaxis = list(title = "대출잔액 평균 (단위: 조원)"),
+    width = 400, autosize=F
+  )
+
+# 기업 내 직원 수 히스토그램
+ggplot(data1, aes(x = log(EMP_CNT))) +
+  geom_histogram(color = "#276DC2", fill = "#276DC2") +
+  labs(title = "기업 내 직원 수", x = "직원 수 (로그변환 후)", y = "빈도")
+
+
+# Model Analysis
+## Preprocessing
+
+df = data1
+rm(list = c('active_1', 'active_2', 'active_merged', 
+            'closed_1', 'closed_2', 'closed_merged',
+            'data', 'data1', 'tmp'))
+
+df = df %>%
+  left_join(finance, by = 'BIZ_NO') %>%
+  left_join(SBHI1,   by = 'IND_CD') %>%
+  left_join(SBHI2,   by = 'IND_CD') %>%
+  left_join(SBHI3,   by = 'IND_CD') %>%
+  left_join(SBHI4,   by = 'IND_CD') %>%
+  left_join(SBHI5,   by = 'IND_CD') %>%
+  left_join(SBHI6,   by = 'IND_CD') %>%
+  left_join(SBHI7,   by = 'IND_CD') %>%
+  left_join(SBHI8,   by = 'IND_CD') %>%
+  left_join(SBHI9,   by = 'IND_CD') %>%
+  left_join(SBHI10,  by = 'IND_CD')
+
+sbhi = function(df, col) {
+  df[[col]] = rep(0, NROW(df))
+  for (i in seq_len(NROW(df))) {
+    if (is.na(df[i, 'STAT_OCR_DATE'])) {
+      # 상태 발생이 NA이면 MEAN22 사용
+      MEAN = str_c(col, '_MEAN22')
+      df[[col]][i] = df[[MEAN]][i]
+    } else {
+      # 상태 발생일자 연도에 맞는 자료 사용
+      YEAR  = as.integer(substr(df[i, 'STAT_OCR_DATE'], 1, 4))
+      if (YEAR == 2022) {
+        MEAN = str_c(col, '_MEAN22')
+        df[[col]][i] = df[[MEAN]][i]
+      } else if (YEAR == 2021) {
+        MEAN = str_c(col, '_MEAN21')
+        df[[col]][i] = df[[MEAN]][i]
+      } else if (YEAR == 2020) {
+        MEAN = str_c(col, '_MEAN20')
+        df[[col]][i] = df[[MEAN]][i]
+      } else if (YEAR == 2019) {
+        MEAN = str_c(col, '_MEAN19')
+        df[[col]][i] = df[[MEAN]][i]
+      } else {
+        MEAN = str_c(col, '_MEAN18')
+        df[[col]][i] = df[[MEAN]][i]
+      }
+    }
+  }
+  df = df %>% select(-c(
+    str_c(col, '_SORT1'), str_c(col, '_SORT2'), str_c(col, '_SORT3'),
+    str_c(col, '_MEAN18'), str_c(col, '_MEAN19'), str_c(col, '_MEAN20'),
+    str_c(col, '_MEAN21'), str_c(col, '_MEAN22')
+  ))
+  return (df)
+}
+
+for (i in seq_len(10)) {
+  col = str_c('SBHI', i)
+  df = sbhi(df, col)
+}
+
+# 마지막 전처리
+# 불필요한 변수제거
+# 산업코드 IND_CD 만 활용
+df = df %>% select(-c(
+  'BIZ_NO', 'MN_BIZ_CONT',
+  'IND_CD_ORDR', 'IND_CD1', 'IND_CD2', 'IND_CD3',        
+  'ESTB_DATE', 'END_DATE', 'STRT_DATE', 'STAT_OCR_DATE', 'STT_DATE',
+  'MDSCO_PRTC_GB', 'LIST_GB', 'PB_ORG_TYP', 'BZ_TYP'
+))
+
+cat_features = c(1, 2, 3, 6, 7, 8)
+for (i in seq_len(ncol(df))) {
+  if (i == 5) { 
+    # response vector
+    next
+  } else if (i %in% cat_features) { 
+    # categorical feature
+    df[[i]] = as.factor(df[[i]])
+  } else { 
+    # numeric feature
+    # 재무 관련 결측치는 0으로 채우기
+    df[[i]][is.na(df[[i]])] = 0
+    
+    # min max scaling
+    df[[i]] = (df[[i]] - min(df[[i]])) / (max(df[[i]]) - min(df[[i]]))
+  }
+}
+
+
+# Fill missing financial data with 0
+# Scale continuous variables between 0 and 1 using minmax scaling
+
+set.seed(123)
+pos_idx <- sample(x = c("train", "valid", "test"),
+                  size = nrow(df[df$CLSBZ_GB == 1, ]),
+                  replace = TRUE,
+                  prob = c(8, 1, 1))
+neg_idx <- sample(x = c("train", "valid", "test"),
+                  size = nrow(df[df$CLSBZ_GB == 0, ]),
+                  replace = TRUE,
+                  prob = c(8, 1, 1))
+
+train = rbind(df[df$CLSBZ_GB == 1, ][pos_idx == 'train', ],
+              df[df$CLSBZ_GB == 0, ][neg_idx == 'train', ])
+valid = rbind(df[df$CLSBZ_GB == 1, ][pos_idx == 'valid', ],
+              df[df$CLSBZ_GB == 0, ][neg_idx == 'valid', ])
+test  = rbind(df[df$CLSBZ_GB == 1, ][pos_idx == 'test', ],
+              df[df$CLSBZ_GB == 0, ][neg_idx == 'test', ])
+
+
+# Fix seed and split data into train, validation, and test sets in an 8:1:1 ratio
+
+## Models
+
+### 1. Baseline (Using RandomForest without external data)
+
+# valid를 사용안해도 되기때문에 train+val 과 test로 구분해서 사용
+baseline_train = rbind(train[, 1:18], valid[, 1:18])
+baseline_test  = test[, 1:18]
+
+baseline = randomForest(as.factor(CLSBZ_GB) ~ ., data = baseline_train)
+prob = predict(baseline, select(baseline_test, -c('CLSBZ_GB')), type = 'prob')[, 2]
+pred = predict(baseline, select(baseline_test, -c('CLSBZ_GB')))
+result = tibble('method' = 'baseline',
+                'AUROC' = MLmetrics::Area_Under_Curve(test$CLSBZ_GB, prob),
+                'F1'  = MLmetrics::F1_Score(test$CLSBZ_GB, pred),
+                'accuracy' = MLmetrics::Accuracy(test$CLSBZ_GB, pred))
+
+# 중요 변수 확인
+baseline_imp = importance(baseline)
+baseline_imp = tibble('variable' = attr(baseline_imp, 'dimnames')[[1]], 
+                      'MeanDecreaseGini' = importance(baseline))
+baseline_imp = arrange(baseline_imp, -MeanDecreaseGini)
+baseline_plot = ggcharts::bar_chart(data = baseline_imp, 
+                                    x = variable, y = MeanDecreaseGini,
+                                    top_n = 15) +
+  ggtitle("Baseline")
+ggsave('fig/baseline.png', baseline_plot, 
+       width = 6, height = 6, units = "in", dpi = 300)
+
+
+### 2. RandomForest
+
+# valid를 사용안해도 되기때문에 train+val 과 test로 구분해서 사용
+train_val = rbind(train, valid)
+rf_fit = randomForest(as.factor(CLSBZ_GB) ~ .,data=train_val)
+
+prob = predict(rf_fit, select(test, -c('CLSBZ_GB')), type = 'prob')[, 2]
+pred = predict(rf_fit, select(test, -c('CLSBZ_GB')))
+
+result = rbind(result,
+               tibble('method' = 'RF+',
+                      'AUROC' = MLmetrics::Area_Under_Curve(test$CLSBZ_GB, prob),
+                      'F1'  = MLmetrics::F1_Score(test$CLSBZ_GB, pred),
+                      'accuracy' = MLmetrics::Accuracy(test$CLSBZ_GB, pred)))
+
+# 중요 변수 확인
+rf_imp = importance(rf_fit)
+rf_imp = tibble('variable' = attr(importance(rf_fit), 'dimnames')[[1]],
+                'MeanDecreaseGini' = importance(rf_fit))
+rf_imp = arrange(rf_imp, -MeanDecreaseGini)
+rf_plot = ggcharts::bar_chart(data = rf_imp, 
+                              x = variable, y = MeanDecreaseGini,
+                              top_n = 15) + 
+  ggtitle("RF+")
+ggsave('fig/rf.png', rf_plot, 
+       width = 6, height = 6, units = "in", dpi = 300)
+
+
+### 3. CatBoost
+
+X_train <- select(train, -c('CLSBZ_GB'))
+y_train <- as.integer(train$CLSBZ_GB)
+X_valid <- select(valid, -c('CLSBZ_GB'))
+y_valid <- as.integer(valid$CLSBZ_GB)
+X_test  <- select(test,  -c('CLSBZ_GB'))
+y_test  <- as.integer(test$CLSBZ_GB)
+
+# cat_features = c(1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12)
+# for (i in cat_features) {
+#   X_train[[i]] = as.factor(X_train[[i]])
+#   X_valid[[i]] = as.factor(X_valid[[i]])
+#   X_test[[i]]  = as.factor(X_test[[i]])
+# }
+
+train_pool <- catboost.load_pool(data = X_train, label = y_train)
+valid_pool <- catboost.load_pool(data = X_valid, label = y_valid)
+test_pool  <- catboost.load_pool(data = X_test,  label = y_test)
+
+# train
+cb_fit <- catboost.train(
+  train_pool,  valid_pool,
+  params = list(
+    loss_function = 'CrossEntropy',
+    eval_metric = 'AUC',
+    iterations = 2000,
+    logging_level = 'Silent',
+    use_best_model = TRUE
+  ))
+
+# prediction
+prob = catboost.predict(
+  cb_fit,
+  test_pool,
+  verbose=FALSE,
+  prediction_type='Probability')
+pred = catboost.predict(
+  cb_fit,
+  test_pool,
+  verbose=FALSE,
+  prediction_type='Class')
+
+result = rbind(result,
+               tibble('method' = 'CatBoost',
+                      'AUROC' = MLmetrics::Area_Under_Curve(y_test, prob),
+                      'F1'  = MLmetrics::F1_Score(y_test, pred),
+                      'accuracy' = MLmetrics::Accuracy(y_test, pred)))
+# feature importance
+cb_imp = catboost.get_feature_importance(
+  cb_fit,
+  pool = NULL,
+  type = 'FeatureImportance',
+  thread_count = -1
+)
+cb_imp = tibble('variable' = attr(cb_imp, 'dimnames')[[1]], 
+                'importance' = cb_imp[, 1])
+cb_imp = arrange(cb_imp, -importance)
+cb_plot = ggcharts::bar_chart(data = cb_imp, x = variable, y = importance,
+                              top_n = 15) + 
+  ggtitle("CatBoost")
+ggsave('fig/cb.png', cb_plot, 
+       width = 6, height = 6, units = "in", dpi = 300)
+
+
+### 4. BART
+
+onehot_col = c('ESTB_GB', 'IND_CD')
+
+for (col in onehot_col) {
+  for (val in unique(df[[col]])) {
+    name = str_c(col, val, sep = '_')
+    df[[name]] = as.integer(df[[col]] == val)
+  }
+}
+
+df = select(df, !any_of(onehot_col))
+
+
+train = rbind(df[df$CLSBZ_GB == 1, ][pos_idx == 'train', ],
+              df[df$CLSBZ_GB == 0, ][neg_idx == 'train', ],
+              df[df$CLSBZ_GB == 1, ][pos_idx == 'valid', ],
+              df[df$CLSBZ_GB == 0, ][neg_idx == 'valid', ])
+test  = rbind(df[df$CLSBZ_GB == 1, ][pos_idx == 'test', ],
+              df[df$CLSBZ_GB == 0, ][neg_idx == 'test', ])
+
+X_train <- select(train, -c('CLSBZ_GB'))
+y_train <- train$CLSBZ_GB
+X_test  <- select(test,  -c('CLSBZ_GB'))
+y_test  <- test$CLSBZ_GB
+
+# fit
+bart_fit = pbart(
+  x.train = as.data.frame(X_train),
+  y.train = as.vector(y_train),
+  x.test  = as.data.frame(X_test),
+  sparse  = TRUE,
+  ndpost  = 3000, # MCMC iteration
+  nskip   = 2000, # burn-in
+  printevery = 1000
+)
+
+prob = pnorm(colMeans(bart_fit$yhat.test))
+pred = ifelse(prob > 0.5, 1, 0)
+
+result = rbind(result,
+               tibble('method' = 'BART',
+                      'AUROC' = MLmetrics::Area_Under_Curve(y_test, prob),
+                      'F1'  = MLmetrics::F1_Score(y_test, pred),
+                      'accuracy' = MLmetrics::Accuracy(y_test, pred)))
+
+# importance
+bart_imp = tibble('variable' = attr(bart_fit$varcount.mean, 'names'), 
+                  'count'    = bart_fit$varcount.mean)
+bart_imp = arrange(bart_imp, -count)
+bart_plot = ggcharts::bar_chart(data = bart_imp, 
+                                x = variable, y = count,
+                                top_n = 15) + 
+  ggtitle("BART")
+ggsave('fig/bart.png', bart_plot, 
+       width = 6, height = 6, units = "in", dpi = 300)
+
+
+# 결과
+
+result
