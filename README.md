@@ -29,7 +29,7 @@ Due to a contract with the competition organization, the dataset used in this pr
 
 ## Contributors
 
-- **Nayeon Kwon** - Data preprocessing, supporting building ML models, documentation
+- **Nayeon Kwon** - Sourcing non-financial data, data preprocessing, supporting building ML models, documentation
 - **Younghoon Yoo** - Automated data preprocessing, building ML models, code optimization
 
 Feel free to explore the repository and download the PDFs for detailed information about the Small and Medium-sized Enterprises Closure Prediction Project.
