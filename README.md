@@ -27,4 +27,9 @@ This project focuses on predicting the closure of small and medium-sized enterpr
 
 Due to a contract with the competition organization, the dataset used in this project cannot be uploaded. While the provided code will not include the dataset, it offers a comprehensive understanding of the project’s methodology and analysis.
 
+## Contributors
+
+- **Nayeon Kwon** - Data preprocessing, supporting building ML models, documentation
+- **Younghoon Yoo** - Automated data preprocessing, building ML models, code optimization
+
 Feel free to explore the repository and download the PDFs for detailed information about the Small and Medium-sized Enterprises Closure Prediction Project.
