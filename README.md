@@ -29,8 +29,8 @@ Due to a contract with the competition organization, the dataset used in this pr
 
 ## Contributors
 
-- **Kwon** - Sourcing non-financial data, data preprocessing, supporting building ML models, documentation
-- **Yoo** - Automated data preprocessing, building ML models, code optimization
+- **Nayeon Kwon** - Sourcing non-financial data, data preprocessing, supporting building ML models, documentation
+- **Younghoon Yoo** - Automated data preprocessing, building ML models, code optimization
 
 ## License
 
