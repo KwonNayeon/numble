@@ -32,8 +32,4 @@ Due to a contract with the competition organization, the dataset used in this pr
 - **Nayeon Kwon** - Sourcing non-financial data, data preprocessing, supporting building ML models, documentation
 - **Younghoon Yoo** - Automated data preprocessing, building ML models, code optimization
 
-## License
-
-This project is licensed under the [MIT License](LICENSE.txt). See the [LICENSE.txt](LICENSE.txt) file for details.
-
-Feel free to explore the repository and download the PDFs for detailed information about the Small and Medium-sized Enterprises Closure Prediction Project.
+Feel free to explore the repository and check out the PDFs for detailed project information.
